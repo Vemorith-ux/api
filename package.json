@@ -6,9 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node app.js",
-    "dev": "NODE_ENV=development node app.js",
-    "prod": "NODE_ENV=production PASSENGER=true node app.js",
-    "test": "node app.js"
+    "build": "echo 'No build step required'",
+    "dev": "node app.js"
   },
   "keywords": [
     "nft",
@@ -30,9 +29,5 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rebelsnft/staking-api"
   }
 }
