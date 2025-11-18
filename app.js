@@ -9,6 +9,7 @@ dotenv.config();
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 const WS = process.env.WEBSOCKET_URL || "wss://monad-testnet.g.alchemy.com/v2/Y_NVhe3hqReREbcOEa0_1Dw5_sPAjmfa";
+const PORT = process.env.PORT || 3000;
 
 const __dirname = path.resolve();
 
@@ -24,7 +25,8 @@ try {
 
 // Validate environment variables
 if (!CONTRACT_ADDRESS) {
-  console.error("❌ CONTRACT_ADDRESS not found in .env file!");
+  console.error("❌ CONTRACT_ADDRESS not found in environment variables!");
+  console.error("Please set CONTRACT_ADDRESS in Render environment variables");
   process.exit(1);
 }
 
@@ -622,71 +624,53 @@ app.use((err, req, res, next) => {
 
 // ==================== SERVER STARTUP ====================
 
-// Check if running under Passenger (cPanel) or standalone
-const isPassenger = process.env.PASSENGER || process.env.NODE_ENV === 'production';
+console.log('\n🚀 ========== STARTING REBELSNFT STAKING API ==========');
+console.log(`📍 Contract: ${CONTRACT_ADDRESS}`);
+console.log(`🌐 Port: ${PORT}`);
+console.log('======================================================\n');
 
-if (isPassenger) {
-  // Running under Passenger (cPanel)
-  console.log('\n🚀 ========== STARTING IN PRODUCTION MODE ==========');
-  console.log('📍 Running under Passenger');
-  console.log(`📍 Contract: ${CONTRACT_ADDRESS}`);
-  console.log(`🌐 Base URL: https://rebelsnft.xyz/staking/api`);
-  console.log('====================================================\n');
-  
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server listening on port ${PORT}`);
+  console.log(`🌐 Health check: http://localhost:${PORT}/health\n`);
   initialize();
-  export default app;
+});
+
+// Graceful shutdown
+const shutdown = async (signal) => {
+  console.log(`\n⚠️ ${signal} received, shutting down gracefully...`);
   
-} else {
-  // Local development mode
-  const PORT = process.env.PORT || 3000;
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+  }
   
-  console.log('\n🚀 ========== STARTING IN DEVELOPMENT MODE ==========');
-  console.log(`📍 Contract: ${CONTRACT_ADDRESS}`);
-  console.log(`🌐 Local URL: http://localhost:${PORT}`);
-  console.log('====================================================\n');
+  if (contract) {
+    try {
+      contract.removeAllListeners();
+    } catch (e) {
+      console.log("Cleanup warning:", e.message);
+    }
+  }
   
-  const server = app.listen(PORT, () => {
-    console.log(`✅ Server listening on port ${PORT}\n`);
-    initialize();
+  if (provider) {
+    try {
+      await provider.destroy();
+      console.log("✅ Provider destroyed");
+    } catch (e) {
+      console.log("Provider cleanup warning:", e.message);
+    }
+  }
+  
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
   });
   
-  // Graceful shutdown
-  const shutdown = async (signal) => {
-    console.log(`\n⚠️ ${signal} received, shutting down gracefully...`);
-    
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-    }
-    
-    if (contract) {
-      try {
-        contract.removeAllListeners();
-      } catch (e) {
-        console.log("Cleanup warning:", e.message);
-      }
-    }
-    
-    if (provider) {
-      try {
-        await provider.destroy();
-        console.log("✅ Provider destroyed");
-      } catch (e) {
-        console.log("Provider cleanup warning:", e.message);
-      }
-    }
-    
-    server.close(() => {
-      console.log("✅ Server closed");
-      process.exit(0);
-    });
-    
-    // Force exit after 10 seconds
-    setTimeout(() => {
-      console.error("⚠️ Forced shutdown after timeout");
-      process.exit(1);
-    }, 10000);
-  };
-  
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-}
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    console.error("⚠️ Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
