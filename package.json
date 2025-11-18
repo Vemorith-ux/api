@@ -1,0 +1,38 @@
+{
+  "name": "rebelsnft-staking-api",
+  "version": "1.0.0",
+  "description": "RebelsNFT Staking Event Listener API - Tracks all stake/unstake activities on blockchain",
+  "main": "app.js",
+  "type": "module",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "NODE_ENV=development node app.js",
+    "prod": "NODE_ENV=production PASSENGER=true node app.js",
+    "test": "node app.js"
+  },
+  "keywords": [
+    "nft",
+    "staking",
+    "ethereum",
+    "blockchain",
+    "websocket",
+    "events",
+    "monad"
+  ],
+  "author": "RebelsNFT",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.4",
+    "express": "^4.21.1",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rebelsnft/staking-api"
+  }
+}
