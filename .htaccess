@@ -1,0 +1,23 @@
+PassengerEnabled on
+PassengerAppType node
+PassengerAppRoot /home/yourusername/rebelsnft-staking-api
+PassengerStartupFile app.js
+PassengerNodejs /usr/bin/node
+
+# Environment
+PassengerAppEnv production
+
+# Keep WebSocket connection alive
+PassengerMaxRequests 0
+PassengerMinInstances 1
+PassengerMaxPoolSize 1
+
+# Force HTTPS (optional)
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Handle all requests through Passenger
+<IfModule mod_passenger.c>
+  PassengerResolveSymlinksInDocumentRoot on
+</IfModule>
