@@ -89,11 +89,13 @@ const initializeProvider = async () => {
     console.log("🔌 Connecting to WebSocket...");
     console.log(`🔗 URL: ${WS.substring(0, 50)}...`);
     
-    provider = new ethers.WebSocketProvider(WS);
+    provider = new ethers.WebSocketProvider(WS, undefined, {
+      staticNetwork: true
+    });
     
     // Wait for connection with timeout
     const timeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Connection timeout')), 10000)
+      setTimeout(() => reject(new Error('Connection timeout')), 15000)
     );
     
     const connection = provider.getNetwork();
@@ -105,7 +107,7 @@ const initializeProvider = async () => {
     contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
     console.log("✅ Contract instance created:", CONTRACT_ADDRESS);
 
-    // Setup WebSocket event handlers
+    // Setup WebSocket event handlers with better error handling
     provider.websocket.on('error', (error) => {
       console.error('❌ WebSocket error:', error.message);
       scheduleReconnect();
@@ -120,6 +122,18 @@ const initializeProvider = async () => {
       console.log('✅ WebSocket connection opened');
       reconnectAttempts = 0; // Reset on successful connection
     });
+
+    // Add ping/pong to keep connection alive
+    setInterval(() => {
+      if (provider && provider.websocket && provider.websocket.readyState === 1) {
+        provider.getBlockNumber().then(block => {
+          console.log(`💓 Heartbeat - Current block: ${block}`);
+        }).catch(err => {
+          console.error('❌ Heartbeat failed:', err.message);
+          scheduleReconnect();
+        });
+      }
+    }, 30000); // Every 30 seconds
 
     return true;
   } catch (error) {
@@ -328,8 +342,9 @@ const setupEventHandlers = () => {
     }
     
     console.log("🎧 Setting up real-time event listeners...");
+    console.log("📡 Listening for events on contract:", CONTRACT_ADDRESS);
 
-    // Listen for Stake events
+    // Listen for Stake events with error handling
     contract.on("Staked", (...args) => {
       try {
         const event = args[args.length - 1];
@@ -341,6 +356,7 @@ const setupEventHandlers = () => {
         console.log("🆔 Token ID:", tokenId.toString());
         console.log("📝 Tx Hash:", event.transactionHash);
         console.log("📦 Block:", event.blockNumber);
+        console.log("⏰ Timestamp:", new Date().toISOString());
         
         const nftKey = `${erc721Token}-${tokenId}`;
         
@@ -369,14 +385,21 @@ const setupEventHandlers = () => {
           recentEvents.pop();
         }
         
+        console.log("✅ Event processed and stored successfully!");
         console.log("======================================\n");
         
       } catch (error) {
         console.error("❌ Error processing Staked event:", error);
+        console.error("Stack:", error.stack);
       }
     });
 
-    // Listen for Withdraw events
+    // Error handler for Stake events
+    contract.on("error", (error) => {
+      console.error("❌ Contract event error:", error);
+    });
+
+    // Listen for Withdraw events with error handling
     contract.on("Withdrawn", (...args) => {
       try {
         const event = args[args.length - 1];
@@ -388,6 +411,7 @@ const setupEventHandlers = () => {
         console.log("🆔 Token ID:", tokenId.toString());
         console.log("📝 Tx Hash:", event.transactionHash);
         console.log("📦 Block:", event.blockNumber);
+        console.log("⏰ Timestamp:", new Date().toISOString());
         
         const nftKey = `${erc721Token}-${tokenId}`;
         
@@ -416,18 +440,27 @@ const setupEventHandlers = () => {
           recentEvents.pop();
         }
         
+        console.log("✅ Event processed and stored successfully!");
         console.log("=========================================\n");
         
       } catch (error) {
         console.error("❌ Error processing Withdrawn event:", error);
+        console.error("Stack:", error.stack);
       }
     });
 
     console.log("✅ Event handlers setup complete!");
-    console.log("👂 Now listening for live events on blockchain...\n");
+    console.log("👂 Now listening for live events on blockchain...");
+    console.log("💡 Tip: Events may take 1-2 blocks to appear (15-30 seconds)\n");
+    
+    // Verify listeners are attached
+    const stakedListenerCount = contract.listenerCount("Staked");
+    const withdrawnListenerCount = contract.listenerCount("Withdrawn");
+    console.log(`📊 Active listeners - Staked: ${stakedListenerCount}, Withdrawn: ${withdrawnListenerCount}\n`);
     
   } catch (error) {
     console.error("❌ Error setting up event handlers:", error);
+    console.error("Stack:", error.stack);
   }
 };
 
@@ -592,6 +625,52 @@ app.get(["/recent-events", "/api/recent-events"], (req, res) => {
   }
 });
 
+// Manual refresh endpoint - Fetch latest events from blockchain
+app.get(["/refresh-events", "/api/refresh-events"], async (req, res) => {
+  try {
+    console.log("🔄 Manual refresh requested...");
+    
+    if (!contract || !provider) {
+      return res.status(503).json({
+        success: false,
+        error: "Contract not initialized"
+      });
+    }
+
+    const currentBlock = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, currentBlock - 100); // Last 100 blocks
+    
+    console.log(`🔍 Fetching events from block ${fromBlock} to ${currentBlock}...`);
+    
+    const stakeFilter = contract.filters.Staked();
+    const recentStakes = await contract.queryFilter(stakeFilter, fromBlock, currentBlock);
+    
+    const withdrawFilter = contract.filters.Withdrawn();
+    const recentWithdraws = await contract.queryFilter(withdrawFilter, fromBlock, currentBlock);
+    
+    console.log(`✅ Found ${recentStakes.length} stakes and ${recentWithdraws.length} withdraws`);
+    
+    res.json({
+      success: true,
+      message: "Events refreshed from blockchain",
+      data: {
+        blocksScanned: currentBlock - fromBlock,
+        stakesFound: recentStakes.length,
+        withdrawsFound: recentWithdraws.length,
+        currentBlock: currentBlock
+      }
+    });
+    
+  } catch (error) {
+    console.error("❌ Error refreshing events:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to refresh events",
+      details: error.message
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
@@ -606,7 +685,9 @@ app.use((req, res) => {
       "GET /staking-stats",
       "GET /api/staking-stats",
       "GET /recent-events",
-      "GET /api/recent-events"
+      "GET /api/recent-events",
+      "GET /refresh-events",
+      "GET /api/refresh-events"
     ]
   });
 });
